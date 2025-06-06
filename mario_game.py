@@ -12,7 +12,7 @@ pygame.mixer.init()
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("Meu Jogo do Mario")
+pygame.display.set_caption("Meu Jogo do Mario (Rascunho)")
 
 # --- 3. Configurações do Jogo ---
 clock = pygame.time.Clock()
@@ -28,7 +28,7 @@ current_game_state = GAME_STATE_TITLE
 
 # --- 6. Carregando Imagens (Sprites, Logo e Fundo) ---
 # --- Sprites do Mario Grande ---
-MARIO_PARADO_BIG_PATH = 'assets/mario_parado_1.png'
+MARIO_PARADO_BIG_PATH = 'assets/mario_parado_1.png' # Assumindo que você tem essa imagem
 MARIO_ANDANDO_BIG_PATHS = [
     'assets/mario_andando_1.png',
     'assets/mario_andando_2.png',
@@ -46,10 +46,14 @@ MARIO_ANDANDO_SMALL_PATHS = [
 MARIO_PULANDO_SMALL_PATH = 'assets/small_mario_pulo.png'
 
 
-GAME_LOGO_PATH = 'assets/mario_logo.png'
-BACKGROUND_IMAGE_PATH = 'assets/mario_background_1.png'
-GROUND_TILE_PATH = 'assets/chão.png'
-PIPE_IMAGE_PATH = 'assets/pip.png'
+GAME_LOGO_PATH = 'assets/mario_logo.png' # Assumindo que você tem essa imagem
+BACKGROUND_IMAGE_PATH = 'assets/mario_background_1.png' # Assumindo que você tem essa imagem
+GROUND_TILE_PATH = 'assets/chão.png' # Assumindo que você tem essa imagem
+
+# --- IMAGEM DO CANO CLÁSSICO ---
+PIPE_IMAGE_PATH = 'assets/pip.png' # <--- AGORA USANDO DIRETAMENTE 'pip.png'
+
+# --- IMAGENS DA PLANTA CARNÍVORA (MANTIDAS) ---
 PIRANHA_PLANT_PATHS = [
     'assets/piranha_plant_1.png',
     'assets/piranha_plant_2.png'
@@ -82,7 +86,7 @@ mario_sprite_jump_small = None
 game_logo_image = None
 background_image = None
 ground_tile_image = None
-pipe_image = None
+pipe_image = None # Será a nova imagem do cano clássico
 piranha_plant_sprites = []
 goomba_sprites = []
 flag_image = None
@@ -105,7 +109,7 @@ TARGET_SPRITE_WIDTH_SMALL = 40  # Aumentado de 32 para 40
 TARGET_SPRITE_HEIGHT_SMALL = 40 # Aumentado de 32 para 40
 
 PIPE_WIDTH = 64
-PIPE_HEIGHT = 64
+PIPE_HEIGHT = 64 # Mantém a altura do cano para colisão
 PIRANHA_PLANT_WIDTH = 32
 PIRANHA_PLANT_HEIGHT = 48
 FLAG_WIDTH = 48
@@ -130,7 +134,7 @@ for i, path in enumerate(MARIO_ANDANDO_SMALL_PATHS):
     print(f"Verificando existência de {path}: {os.path.exists(path)}")
 print(f"Verificando existência de {MARIO_PULANDO_SMALL_PATH}: {os.path.exists(MARIO_PULANDO_SMALL_PATH)}")
 
-print(f"Verificando existência de {PIPE_IMAGE_PATH}: {os.path.exists(PIPE_IMAGE_PATH)}")
+print(f"Verificando existência de {PIPE_IMAGE_PATH}: {os.path.exists(PIPE_IMAGE_PATH)}") # Verifica nova imagem (pip.png)
 # Correção aqui para verificar corretamente cada path da piranha plant
 for i, path in enumerate(PIRANHA_PLANT_PATHS):
     print(f"Verificando existência de {path}: {os.path.exists(path)}")
@@ -184,9 +188,11 @@ try:
     GROUND_TILE_HEIGHT = 32
     ground_tile_image = pygame.transform.scale(ground_tile_image, (ground_tile_image.get_width(), GROUND_TILE_HEIGHT))
 
+    # --- CARREGA A IMAGEM 'pip.png' PARA O CANO ---
     pipe_image = pygame.image.load(PIPE_IMAGE_PATH).convert_alpha()
     pipe_image = pygame.transform.scale(pipe_image, (PIPE_WIDTH, PIPE_HEIGHT))
 
+    # --- CARREGA AS IMAGENS DA PIRANHA PLANT (MANTIDAS) ---
     for path in PIRANHA_PLANT_PATHS:
         frame = pygame.image.load(path).convert_alpha()
         frame = pygame.transform.scale(frame, (PIRANHA_PLANT_WIDTH, PIRANHA_PLANT_HEIGHT))
@@ -354,11 +360,15 @@ def unlock_achievement(achievement_id):
 class Pipe:
     def __init__(self, world_x):
         self.world_x = world_x
+        # O rect do cano é para posicionamento e desenho, não necessariamente para colisão completa
         self.rect = pygame.Rect(self.world_x, SCREEN_HEIGHT - GROUND_HEIGHT - PIPE_HEIGHT, PIPE_WIDTH, PIPE_HEIGHT)
-        # O hitbox da planta é independente do cano para colisões de inimigo
+        
+        # A "boca" do cano onde a planta aparece/desaparece
+        self.pipe_top_y = SCREEN_HEIGHT - GROUND_HEIGHT - PIPE_HEIGHT
+        
         self.piranha_plant = PiranhaPlant(
             self.world_x + (PIPE_WIDTH // 2) - (PIRANHA_PLANT_WIDTH // 2),
-            self.rect.y # A planta sai do topo do cano
+            self.pipe_top_y # A planta sai do topo do cano
         )
 
     def update(self):
@@ -369,9 +379,17 @@ class Pipe:
         self.piranha_plant.draw(screen, camera_x)
 
 class PiranhaPlant:
+    # Estados da planta
+    STATE_HIDDEN = 0
+    STATE_RISING = 1
+    STATE_VISIBLE = 2
+    STATE_SINKING = 3
+
     def __init__(self, world_x, pipe_top_y):
         self.world_x = world_x
-        self.pipe_top_y = pipe_top_y
+        self.pipe_top_y = pipe_top_y # A coordenada Y do topo do cano
+        self.actual_top_y = pipe_top_y - PIRANHA_PLANT_HEIGHT # Posição Y da planta quando totalmente visível
+        self.hidden_y = pipe_top_y + (PIRANHA_PLANT_HEIGHT / 2) # Posição Y da planta quando totalmente escondida (ajuste para visual)
 
         self.height = PIRANHA_PLANT_HEIGHT
         self.width = PIRANHA_PLANT_WIDTH
@@ -381,41 +399,49 @@ class PiranhaPlant:
         self.sprites = piranha_plant_sprites
 
         self.move_speed = BASE_PIRANHA_PLANT_SPEED # Inicializado com a velocidade base
-        self.max_y = self.pipe_top_y - (self.height / 2)
-        self.min_y = self.pipe_top_y + self.height # Planta totalmente para baixo
-
-        self.current_y = self.min_y
-        self.direction = -1 # Começa subindo
-        self.wait_timer = 0
-        self.WAIT_TIME = 100 # Tempo que a planta espera no topo e na base
+        
+        self.current_y = self.hidden_y # Começa escondida
+        self.state = PiranhaPlant.STATE_HIDDEN
+        self.timer = random.randint(30, 90) # Tempo inicial aleatório antes de aparecer pela primeira vez
 
         self.rect = pygame.Rect(self.world_x, self.current_y, self.width, self.height)
 
-    def update(self):
-        if self.wait_timer > 0:
-            self.wait_timer -= 1
-        else:
-            self.current_y += self.direction * self.move_speed
 
-            if self.direction == -1: # Subindo
-                if self.current_y <= self.max_y:
-                    self.current_y = self.max_y
-                    self.direction = 1 # Começa a descer
-                    self.wait_timer = self.WAIT_TIME
-            elif self.direction == 1: # Descendo
-                if self.current_y >= self.min_y:
-                    self.current_y = self.min_y
-                    self.direction = -1 # Começa a subir
-                    self.wait_timer = self.WAIT_TIME
+    def update(self):
+        if self.timer > 0:
+            self.timer -= 1
+        else:
+            if self.state == PiranhaPlant.STATE_HIDDEN:
+                self.state = PiranhaPlant.STATE_RISING
+            elif self.state == PiranhaPlant.STATE_RISING:
+                self.current_y -= self.move_speed
+                if self.current_y <= self.actual_top_y:
+                    self.current_y = self.actual_top_y
+                    self.state = PiranhaPlant.STATE_VISIBLE
+                    self.timer = random.randint(120, 180) # Tempo visível (2 a 3 segundos)
+            elif self.state == PiranhaPlant.STATE_VISIBLE:
+                self.state = PiranhaPlant.STATE_SINKING
+            elif self.state == PiranhaPlant.STATE_SINKING:
+                self.current_y += self.move_speed
+                if self.current_y >= self.hidden_y:
+                    self.current_y = self.hidden_y
+                    self.state = PiranhaPlant.STATE_HIDDEN
+                    self.timer = random.randint(120, 180) # Tempo escondida (2 a 3 segundos)
 
         self.rect.y = self.current_y
 
-        self.animation_index += self.animation_speed
-        if self.animation_index >= len(self.sprites):
-            self.animation_index = 0
+        # Animação apenas quando visível ou em transição
+        if self.state in [PiranhaPlant.STATE_RISING, PiranhaPlant.STATE_VISIBLE, PiranhaPlant.STATE_SINKING]:
+            self.animation_index += self.animation_speed
+            if self.animation_index >= len(self.sprites):
+                self.animation_index = 0
+        else: # Quando totalmente escondida, zera a animação ou a mantém no primeiro frame
+             self.animation_index = 0
+
 
     def draw(self, screen, camera_x):
-        if self.sprites:
+        # A planta só será desenhada quando estiver no estado totalmente visível
+        if self.sprites and self.state == PiranhaPlant.STATE_VISIBLE:
             screen.blit(self.sprites[int(self.animation_index)], (self.rect.x - camera_x, self.rect.y))
 
 
@@ -462,6 +488,7 @@ class Goomba:
                 screen.blit(current_goomba_image, (self.rect.x - camera_x, self.rect.y))
         elif self.death_timer > 0:
             if self.sprites:
+                # Desenha o goomba esmagado (apenas o primeiro frame achatado)
                 dead_goomba_image = pygame.transform.scale(self.sprites[0], (GOOMBA_WIDTH, GOOMBA_HEIGHT // 2))
                 screen.blit(dead_goomba_image, (self.rect.x - camera_x, self.rect.y + GOOMBA_HEIGHT // 2))
 
@@ -849,7 +876,7 @@ while running:
         if world_x < 0:
             world_x = 0
         elif world_x > WORLD_MAX_X - (TARGET_SPRITE_WIDTH_BIG if mario_is_big else TARGET_SPRITE_WIDTH_SMALL):
-            world_x = WORLD_MAX_X - (TARGET_SPRITE_WIDTH_BIG if mario_is_big else TARGET_SPRITE_WIDTH_SMALL)
+            world_x = WORLD_MAX_X - (TARGET_SPRITE_WIDTH_BIG if mario_is_big else TARGET_SPRITE_HEIGHT_SMALL)
 
         target_camera_x = world_x - (SCREEN_WIDTH // 4)
 
@@ -945,31 +972,33 @@ while running:
             pipe_rect = pygame.Rect(pipe.world_x, pipe.rect.y, PIPE_WIDTH, PIPE_HEIGHT)
 
             # Colisão com a Planta Carnívora (perigo)
-            plant_world_rect = pygame.Rect(pipe.piranha_plant.rect.x, pipe.piranha_plant.rect.y, PIRANHA_PLANT_WIDTH, PIRANHA_PLANT_HEIGHT)
-            if mario_rect.colliderect(plant_world_rect):
-                if mario_invincible_timer == 0:
-                    print(f"Mario colidiu com a Planta Carnívora em {pipe.world_x}!")
-                    piranha_collisions_count += 1
-                    if piranha_collisions_count >= achievements["piranha_collided_1"]["target"]:
-                        unlock_achievement("piranha_collided_1")
+            # A planta só pode colidir quando estiver TOTALMENTE VISÍVEL (STATE_VISIBLE)
+            if pipe.piranha_plant.state == PiranhaPlant.STATE_VISIBLE:
+                plant_world_rect = pygame.Rect(pipe.piranha_plant.rect.x, pipe.piranha_plant.rect.y, PIRANHA_PLANT_WIDTH, PIRANHA_PLANT_HEIGHT)
+                if mario_rect.colliderect(plant_world_rect):
+                    if mario_invincible_timer == 0:
+                        print(f"Mario colidiu com a Planta Carnívora em {pipe.world_x}!")
+                        piranha_collisions_count += 1
+                        if piranha_collisions_count >= achievements["piranha_collided_1"]["target"]:
+                            unlock_achievement("piranha_collided_1")
 
-                    if mario_is_big:
-                        mario_is_big = False
-                        mario_shrink_count += 1
-                        unlock_achievement("mario_shrunk_1")
-                        mario_invincible_timer = INVINCIBILITY_DURATION
-                        # AJUSTE NA REDUÇÃO: Mantém a base do Mario no chão
-                        mario_y_on_screen = SCREEN_HEIGHT - GROUND_HEIGHT - TARGET_SPRITE_HEIGHT_SMALL
-                    else:
-                        mario_lives -= 1
-                        print(f"Mario perdeu uma vida! Vidas restantes: {mario_lives}")
-                        if mario_lives <= 0:
-                            current_game_state = GAME_STATE_GAME_OVER # Mudar para o estado de Game Over
-                        else:
+                        if mario_is_big:
+                            mario_is_big = False
+                            mario_shrink_count += 1
+                            unlock_achievement("mario_shrunk_1")
                             mario_invincible_timer = INVINCIBILITY_DURATION
-                # Adicionado para evitar que o Mario leve vários hits da mesma planta/goomba
-                # na mesma frame, se a colisão ainda estiver ativa
-                break
+                            # AJUSTE NA REDUÇÃO: Mantém a base do Mario no chão
+                            mario_y_on_screen = SCREEN_HEIGHT - GROUND_HEIGHT - TARGET_SPRITE_HEIGHT_SMALL
+                        else:
+                            mario_lives -= 1
+                            print(f"Mario perdeu uma vida! Vidas restantes: {mario_lives}")
+                            if mario_lives <= 0:
+                                current_game_state = GAME_STATE_GAME_OVER # Mudar para o estado de Game Over
+                            else:
+                                mario_invincible_timer = INVINCIBILITY_DURATION
+                    # Adicionado para evitar que o Mario leve vários hits da mesma planta/goomba
+                    # na mesma frame, se a colisão ainda estiver ativa
+                    #break # Remover este break se Mario puder colidir com outros inimigos na mesma frame
 
             # Colisão com o Cano (obstáculo sólido)
             if mario_rect.colliderect(pipe_rect):
