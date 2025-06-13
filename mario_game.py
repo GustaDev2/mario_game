@@ -12,7 +12,7 @@ pygame.mixer.init()
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("Meu Jogo do Mario (Rascunho)")
+pygame.display.set_caption("Meu Jogo do Mario")
 
 # --- 3. Configurações do Jogo ---
 clock = pygame.time.Clock()
