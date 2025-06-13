@@ -267,12 +267,13 @@ BOUNCE_STRENGTH = -5
 mario_facing_right = True
 
 # --- VARIÁVEIS PARA TAMANHO E VIDA DO MARIO ---
-mario_is_big = False
-mario_lives = 3
+mario_is_big = False # Mario sempre começa pequeno
+# mario_lives foi removido, pois a vida agora é condicional ao tamanho
 
 # Invencibilidade temporária após colisão ou pegar item
 mario_invincible_timer = 0
-INVINCIBILITY_DURATION = 180
+INVINCIBILITY_DURATION = 180 # 3 segundos de invencibilidade após dano
+STAR_INVINCIBILITY_DURATION = 600 # NOVO: 10 segundos de invencibilidade após pegar estrela
 
 # Variável para controlar o tempo de duração da tela de Game Over
 game_over_timer = 0
@@ -307,14 +308,13 @@ try:
     pygame.font.init()
     font = pygame.font.Font(None, 48)
     small_font = pygame.font.Font(None, 24)
-    life_font = pygame.font.Font(None, 36)
+    # life_font não é mais necessário, pois vidas não serão exibidas
     game_over_font = pygame.font.Font(None, 72) # Fonte maior para "Game Over"
     level_font = pygame.font.Font(None, 64) # Nova fonte para o número da fase
 except pygame.error as e:
     print(f"Erro ao carregar fonte: {e}. Usando fonte padrão.")
     font = pygame.font.Font(None, 48)
     small_font = pygame.font.Font(None, 24)
-    life_font = pygame.font.Font(None, 36)
     game_over_font = pygame.font.Font(None, 72)
     level_font = pygame.font.Font(None, 64)
 
@@ -589,7 +589,7 @@ def reset_game():
     global world_x, camera_x, mario_y_on_screen, current_game_state
     global mario_animation_index, mario_current_direction, mario_is_jumping, mario_vertical_speed, mario_facing_right
     global goomba_collisions_count, piranha_collisions_count, flags_reached_count, stars_collected_count, mario_grow_count, goomba_stomped_count
-    global item_blocks, active_stars, active_mushrooms, pipes, goombas, goal_flag, mario_is_big, mario_lives, mario_invincible_timer, mario_shrink_count
+    global item_blocks, active_stars, active_mushrooms, pipes, goombas, goal_flag, mario_is_big, mario_invincible_timer, mario_shrink_count
     global game_over_timer, current_game_level, current_level_flag_reached # Adiciona current_game_level
 
     print("Iniciando reset_game...")
@@ -597,9 +597,8 @@ def reset_game():
     world_x = world_x_initial
     camera_x = camera_x_initial
 
-    # Mario sempre começa pequeno e com vidas cheias
+    # Mario sempre começa pequeno (e sem vidas "extras" além do tamanho)
     mario_is_big = False
-    mario_lives = 3
     mario_invincible_timer = 0
 
     # AJUSTE NO RESET: Garante que Mario pequeno comece na altura correta do chão
@@ -743,7 +742,8 @@ def populate_world():
 
         # Se não está muito perto de nenhum cano, adiciona o bloco
         if not is_too_close_to_pipe:
-            item_type = random.choice(["star", "mushroom"])
+            # --- MODIFICAÇÃO AQUI: Estrela 1/5 de chance, Cogumelo 4/5 de chance ---
+            item_type = random.choice(["star"] + ["mushroom"] * 4) # Estrela 1/5, Cogumelo 4/5
             item_blocks.append(ItemBlock(world_x=x_pos, world_y=y_pos, item_type=item_type))
             current_x = x_pos
         else:
@@ -876,7 +876,7 @@ while running:
         if world_x < 0:
             world_x = 0
         elif world_x > WORLD_MAX_X - (TARGET_SPRITE_WIDTH_BIG if mario_is_big else TARGET_SPRITE_WIDTH_SMALL):
-            world_x = WORLD_MAX_X - (TARGET_SPRITE_WIDTH_BIG if mario_is_big else TARGET_SPRITE_HEIGHT_SMALL)
+            world_x = WORLD_MAX_X - (TARGET_SPRITE_WIDTH_BIG if mario_is_big else TARGET_SPRITE_HEIGHT_SML)
 
         target_camera_x = world_x - (SCREEN_WIDTH // 4)
 
@@ -973,10 +973,11 @@ while running:
 
             # Colisão com a Planta Carnívora (perigo)
             # A planta só pode colidir quando estiver TOTALMENTE VISÍVEL (STATE_VISIBLE)
+            # E Mario só leva dano se NÃO estiver invencível
             if pipe.piranha_plant.state == PiranhaPlant.STATE_VISIBLE:
                 plant_world_rect = pygame.Rect(pipe.piranha_plant.rect.x, pipe.piranha_plant.rect.y, PIRANHA_PLANT_WIDTH, PIRANHA_PLANT_HEIGHT)
                 if mario_rect.colliderect(plant_world_rect):
-                    if mario_invincible_timer == 0:
+                    if mario_invincible_timer == 0: # Mario não está invencível
                         print(f"Mario colidiu com a Planta Carnívora em {pipe.world_x}!")
                         piranha_collisions_count += 1
                         if piranha_collisions_count >= achievements["piranha_collided_1"]["target"]:
@@ -986,16 +987,14 @@ while running:
                             mario_is_big = False
                             mario_shrink_count += 1
                             unlock_achievement("mario_shrunk_1")
-                            mario_invincible_timer = INVINCIBILITY_DURATION
+                            mario_invincible_timer = INVINCIBILITY_DURATION # Invencibilidade após encolher
                             # AJUSTE NA REDUÇÃO: Mantém a base do Mario no chão
                             mario_y_on_screen = SCREEN_HEIGHT - GROUND_HEIGHT - TARGET_SPRITE_HEIGHT_SMALL
+                            print("Mario encolheu!")
                         else:
-                            mario_lives -= 1
-                            print(f"Mario perdeu uma vida! Vidas restantes: {mario_lives}")
-                            if mario_lives <= 0:
-                                current_game_state = GAME_STATE_GAME_OVER # Mudar para o estado de Game Over
-                            else:
-                                mario_invincible_timer = INVINCIBILITY_DURATION
+                            # Mario está pequeno e leva dano: Game Over imediato
+                            current_game_state = GAME_STATE_GAME_OVER
+                            print("Mario pequeno levou dano! Game Over!")
                     # Adicionado para evitar que o Mario leve vários hits da mesma planta/goomba
                     # na mesma frame, se a colisão ainda estiver ativa
                     #break # Remover este break se Mario puder colidir com outros inimigos na mesma frame
@@ -1047,7 +1046,7 @@ while running:
                         mario_vertical_speed = BOUNCE_STRENGTH
                         mario_is_jumping = True
 
-                    elif mario_invincible_timer == 0:
+                    elif mario_invincible_timer == 0: # Mario não está invencível
                         print(f"Mario colidiu com um Goomba em {goomba.world_x}!")
                         goomba_collisions_count += 1
                         if goomba_collisions_count >= achievements["goomba_collided_1"]["target"]:
@@ -1059,16 +1058,14 @@ while running:
                             mario_is_big = False
                             mario_shrink_count += 1
                             unlock_achievement("mario_shrunk_1")
-                            mario_invincible_timer = INVINCIBILITY_DURATION
+                            mario_invincible_timer = INVINCIBILITY_DURATION # Invencibilidade após encolher
                             # AJUSTE NA REDUÇÃO: Mantém a base do Mario no chão
                             mario_y_on_screen = SCREEN_HEIGHT - GROUND_HEIGHT - TARGET_SPRITE_HEIGHT_SMALL
+                            print("Mario encolheu!")
                         else:
-                            mario_lives -= 1
-                            print(f"Mario perdeu uma vida! Vidas restantes: {mario_lives}")
-                            if mario_lives <= 0:
-                                current_game_state = GAME_STATE_GAME_OVER # Mudar para o estado de Game Over
-                            else:
-                                mario_invincible_timer = INVINCIBILITY_DURATION
+                            # Mario está pequeno e leva dano: Game Over imediato
+                            current_game_state = GAME_STATE_GAME_OVER
+                            print("Mario pequeno levou dano! Game Over!")
                         # Adicionado para evitar que o Mario leve vários hits da mesma planta/goomba
                         # na mesma frame, se a colisão ainda estiver ativa
                         break
@@ -1150,6 +1147,10 @@ while running:
                 star.collected = True
                 stars_collected_count += 1
                 print(f"Estrela coletada! Total: {stars_collected_count}")
+                # NOVO: Mario ganha invencibilidade ao pegar a estrela
+                mario_invincible_timer = STAR_INVINCIBILITY_DURATION
+                print(f"Mario ficou invencível por {STAR_INVINCIBILITY_DURATION/FPS} segundos!")
+
                 if stars_collected_count >= achievements["star_collector_1"]["target"]:
                     unlock_achievement("star_collector_1")
                 if stars_collected_count >= achievements["star_collector_3"]["target"]:
@@ -1164,7 +1165,7 @@ while running:
                     mario_is_big = True
                     mario_grow_count += 1
                     unlock_achievement("mario_grown_1")
-                    mario_invincible_timer = INVINCIBILITY_DURATION
+                    mario_invincible_timer = INVINCIBILITY_DURATION # Invencibilidade breve ao crescer
                     # AJUSTE NO CRESCIMENTO: Mantém a base do Mario no chão
                     mario_y_on_screen = SCREEN_HEIGHT - GROUND_HEIGHT - TARGET_SPRITE_HEIGHT_BIG
 
@@ -1258,9 +1259,9 @@ while running:
         mario_draw_x_on_screen = world_x - camera_x
         screen.blit(current_mario_image, (mario_draw_x_on_screen, mario_y_on_screen))
 
-        # Desenha o contador de vidas
-        lives_text = life_font.render(f"Vidas: {mario_lives}", True, (255, 255, 255))
-        screen.blit(lives_text, (10, 10))
+        # O contador de vidas foi removido, pois a vida agora é baseada no tamanho do Mario
+        # lives_text = life_font.render(f"Vidas: {mario_lives}", True, (255, 255, 255))
+        # screen.blit(lives_text, (10, 10))
 
         # Adiciona um contador de distância ou progresso
         progress_text = small_font.render(f"Progresso: {int(world_x)} / {WORLD_MAX_X}", True, (255, 255, 255))
